@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VibeOps | Dev Workspace & Agentic Cockpit</title>
+    <meta name="description" content="A futuristic developer cockpit powered by local multi-agents and MCP tools.">
+    <link rel="stylesheet" href="index.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+</head>
+<body>
+    <div class="glow-orb" id="orb-1"></div>
+    <div class="glow-orb" id="orb-2"></div>
+
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar glass">
+            <div class="logo">
+                <i class="ph-fill ph-terminal-window"></i>
+                <span>VibeOps</span>
+            </div>
+            <ul class="nav-links">
+                <li class="active" data-view="dashboard"><a href="#"><i class="ph ph-cpu"></i> Cockpit</a></li>
+                <li data-view="processes"><a href="#"><i class="ph ph-list-numbers"></i> Processes</a></li>
+                <li data-view="git"><a href="#"><i class="ph ph-git-branch"></i> Workspace Git</a></li>
+                <li data-view="agent"><a href="#"><i class="ph ph-sparkle"></i> Agent Console</a></li>
+                <li data-view="settings"><a href="#"><i class="ph ph-sliders"></i> Settings</a></li>
+            </ul>
+            <div class="status-indicator">
+                <div class="indicator-dot online"></div>
+                <span id="backend-status">Backend Connecting...</span>
+            </div>
+        </nav>
+
+        <!-- Main Dashboard Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-header">
+                <div class="title-block">
+                    <h1>Developer Cockpit</h1>
+                    <p>Local agent workspace & OS diagnostics console.</p>
+                </div>
+                <div class="api-key-badge" id="key-badge">
+                    <i class="ph ph-key"></i>
+                    <span id="key-badge-text">API Key Missing</span>
+                </div>
+            </header>
+
+            <!-- VIEW: Dashboard -->
+            <div id="view-dashboard" class="view-section active">
+                <div class="dashboard-grid">
+                    <!-- Resource Dials -->
+                    <div class="card glass metrics-card">
+                        <h2>Resource Utilization</h2>
+                        <div class="dials-container">
+                            <div class="dial-wrapper">
+                                <svg class="progress-ring" width="120" height="120">
+                                    <circle class="progress-ring-bg" stroke="rgba(255,255,255,0.05)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60"/>
+                                    <circle class="progress-ring-circle" id="cpu-ring" stroke="var(--cyan)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60" stroke-dasharray="314.16" stroke-dashoffset="314.16"/>
+                                </svg>
+                                <div class="dial-label">
+                                    <span class="dial-value" id="cpu-val">0%</span>
+                                    <span class="dial-name">CPU</span>
+                                </div>
+                            </div>
+                            <div class="dial-wrapper">
+                                <svg class="progress-ring" width="120" height="120">
+                                    <circle class="progress-ring-bg" stroke="rgba(255,255,255,0.05)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60"/>
+                                    <circle class="progress-ring-circle" id="ram-ring" stroke="var(--violet)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60" stroke-dasharray="314.16" stroke-dashoffset="314.16"/>
+                                </svg>
+                                <div class="dial-label">
+                                    <span class="dial-value" id="ram-val">0%</span>
+                                    <span class="dial-name">RAM</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="memory-details">
+                            <p>RAM Utilized: <span id="ram-used">0.0</span> / <span id="ram-total">0.0</span> GB</p>
+                            <p>System Disk Load: <span id="disk-percent">0%</span></p>
+                        </div>
+                    </div>
+
+                    <!-- Git Status Overview -->
+                    <div class="card glass git-summary-card">
+                        <h2>Workspace Git Status</h2>
+                        <div id="git-summary-content">
+                            <p class="loading-text"><i class="ph-bold ph-spinner spinner"></i> Inspecting repository...</p>
+                        </div>
+                    </div>
+
+                    <!-- Top Memory Hogging Processes -->
+                    <div class="card glass processes-summary-card">
+                        <h2>Resource Heavy Processes</h2>
+                        <div class="table-container-small">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>RAM (MB)</th>
+                                        <th>Category</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="process-summary-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Quick Agent Actions -->
+                    <div class="card glass quick-actions-card">
+                        <h2>Suggested Agent Prompts</h2>
+                        <div class="suggestion-grid">
+                            <button class="suggest-btn" data-prompt="Analyze running processes and suggest optimization."><i class="ph ph-cpu"></i> Optimize System RAM</button>
+                            <button class="suggest-btn" data-prompt="Summarize my active Git uncommitted modifications."><i class="ph ph-git-diff"></i> Review Uncommitted Code</button>
+                            <button class="suggest-btn" data-prompt="Why is my computer running slowly? Inspect RAM hogs."><i class="ph ph-info"></i> Troubleshoot Heavy Apps</button>
+                            <button class="suggest-btn" data-prompt="Show Git branch status and recent commits."><i class="ph ph-git-branch"></i> Workspace Audit</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: Processes -->
+            <div id="view-processes" class="view-section">
+                <div class="card glass full-width-card">
+                    <div class="card-header">
+                        <h2>Running System Processes</h2>
+                        <button class="btn-primary" id="btn-refresh-processes"><i class="ph ph-arrows-counter-clockwise"></i> Refresh</button>
+                    </div>
+                    <p class="section-desc">Active tasks consuming RAM. Terminate idle applications to optimize memory.</p>
+                    <div class="table-container-large">
+                        <table class="full-table">
+                            <thead>
+                                <tr>
+                                    <th>PID</th>
+                                    <th>Process Name</th>
+                                    <th>RAM Usage</th>
+                                    <th>CPU Usage</th>
+                                    <th>Classification</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="processes-table-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: Git Status -->
+            <div id="view-git" class="view-section">
+                <div class="git-grid">
+                    <div class="card glass repo-info-card">
+                        <h2>Repository Overview</h2>
+                        <div class="git-meta-details">
+                            <div class="meta-item">
+                                <span class="meta-label">Path:</span>
+                                <span class="meta-value" id="git-path">-</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Branch:</span>
+                                <span class="meta-value branch-tag" id="git-branch">-</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Working Directory:</span>
+                                <span class="meta-value" id="git-dirty-status">-</span>
+                            </div>
+                        </div>
+                        <h3>Uncommitted Modifications</h3>
+                        <ul class="file-list" id="git-changes-list">
+                            <!-- Populated by JS -->
+                        </ul>
+                        <h3>Untracked Files</h3>
+                        <ul class="file-list" id="git-untracked-list">
+                            <!-- Populated by JS -->
+                        </ul>
+                    </div>
+
+                    <div class="card glass commits-card">
+                        <h2>Recent Commits</h2>
+                        <div class="timeline" id="git-commits-timeline">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: Agent Console -->
+            <div id="view-agent" class="view-section">
+                <div class="agent-console-container card glass">
+                    <div class="chat-header">
+                        <div class="agent-avatar"><i class="ph-fill ph-sparkle"></i></div>
+                        <div class="agent-info">
+                            <h3>VibeOps Multi-Agent System</h3>
+                            <p>OpsCoordinator, SysAdmin & DevCopilot Online</p>
+                        </div>
+                    </div>
+                    <div class="chat-messages" id="chat-messages-box">
+                        <div class="message assistant">
+                            Hello! I am the **VibeOps Multi-Agent Console**. I can inspect your local resource metrics, identify heavy system processes, suggest code changes, or review your Git status.
+                            <br><br>
+                            How can I help you optimize your workspace today?
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <form id="chat-form">
+                            <input type="text" id="chat-input" placeholder="Ask SysAdmin to clean memory or DevCopilot to review git changes..." autocomplete="off" required>
+                            <button type="submit" class="btn-primary" id="btn-send"><i class="ph ph-paper-plane-right"></i> Send</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: Settings -->
+            <div id="view-settings" class="view-section">
+                <div class="card glass settings-card">
+                    <h2>Configuration Panel</h2>
+                    <form id="form-settings">
+                        <div class="form-group">
+                            <label for="settings-key">Gemini API Key</label>
+                            <input type="password" id="settings-key" placeholder="AIzaSy..." required>
+                            <p class="input-help">Your API Key is stored safely in your browser's local storage and is sent securely via HTTPS headers to your local FastAPI backend server.</p>
+                        </div>
+                        <button type="submit" class="btn-primary">Save Configuration <i class="ph ph-floppy-disk"></i></button>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notification system -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
