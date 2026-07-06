@@ -1,21 +1,18 @@
 const BACKEND_URL = 'http://localhost:8000';
-let pollInterval = null;
-let gitPollInterval = null;
+let statusPoll = null;
+let gitPoll = null;
 
-// State management
 const state = {
     apiKey: localStorage.getItem('vibeops_gemini_key') || '',
     activeView: 'dashboard',
-    system: {
-        cpu: 0,
-        ram: 0,
-        ramUsed: 0,
-        ramTotal: 0,
-        disk: 0
+    workspace: {
+        languages: [],
+        totalFiles: 0,
+        filesPreview: [],
+        secrets: []
     }
 };
 
-// DOM Elements
 const elements = {
     navLinks: document.querySelectorAll('.nav-links li'),
     views: document.querySelectorAll('.view-section'),
@@ -28,21 +25,17 @@ const elements = {
     formSettings: document.getElementById('form-settings'),
     settingsKey: document.getElementById('settings-key'),
     
-    // System Dials & Meta
-    cpuRing: document.getElementById('cpu-ring'),
-    cpuVal: document.getElementById('cpu-val'),
-    ramRing: document.getElementById('ram-ring'),
-    ramVal: document.getElementById('ram-val'),
-    ramUsed: document.getElementById('ram-used'),
-    ramTotal: document.getElementById('ram-total'),
-    diskPercent: document.getElementById('disk-percent'),
+    // Workspace profile
+    frameworksVal: document.getElementById('frameworks-val'),
+    filesCount: document.getElementById('files-count'),
+    filesPreviewList: document.getElementById('files-preview-list'),
     
-    // Lists & Tables
-    processSummaryBody: document.getElementById('process-summary-body'),
-    processesTableBody: document.getElementById('processes-table-body'),
-    btnRefreshProcesses: document.getElementById('btn-refresh-processes'),
+    // Secrets
+    secretsSummary: document.getElementById('secrets-summary'),
+    secretsTableBody: document.getElementById('secrets-table-body'),
+    btnRunScan: document.getElementById('btn-run-scan'),
     
-    // Git Panel
+    // Git
     gitSummaryContent: document.getElementById('git-summary-content'),
     gitPath: document.getElementById('git-path'),
     gitBranch: document.getElementById('git-branch'),
@@ -51,29 +44,27 @@ const elements = {
     gitUntrackedList: document.getElementById('git-untracked-list'),
     gitCommitsTimeline: document.getElementById('git-commits-timeline'),
     
-    // Chat Agent
+    // Agent Console
     chatForm: document.getElementById('chat-form'),
     chatInput: document.getElementById('chat-input'),
     chatMessagesBox: document.getElementById('chat-messages-box'),
     suggestBtns: document.querySelectorAll('.suggest-btn'),
     
-    // Notification
     toast: document.getElementById('toast')
 };
 
-// Initialization
 function init() {
     setupEventListeners();
     checkApiKey();
     checkBackendHealth();
     
-    // Start polling system metrics
-    updateSystemMetrics();
-    pollInterval = setInterval(updateSystemMetrics, 3000);
-    
-    // Start polling Git repo status
+    // Initial fetches
+    updateWorkspaceStatus();
     updateGitStatus();
-    gitPollInterval = setInterval(updateGitStatus, 10000);
+    
+    // Start polling loops
+    statusPoll = setInterval(updateWorkspaceStatus, 5000);
+    gitPoll = setInterval(updateGitStatus, 10000);
 }
 
 function setupEventListeners() {
@@ -83,7 +74,6 @@ function setupEventListeners() {
             e.preventDefault();
             const viewName = link.dataset.view;
             if (!viewName) return;
-            
             switchView(viewName);
         });
     });
@@ -114,18 +104,17 @@ function setupEventListeners() {
         });
     });
 
-    // Process refresh button
-    elements.btnRefreshProcesses.addEventListener('click', () => {
-        showToast('Refreshing process metrics...');
-        updateSystemMetrics();
+    // Refresh secrets scanner
+    elements.btnRunScan.addEventListener('click', () => {
+        showToast('Running comprehensive codebase secrets check...');
+        updateWorkspaceStatus();
     });
 }
 
-// Router
+// Routing
 function switchView(viewName) {
     state.activeView = viewName;
     
-    // Update active nav class
     elements.navLinks.forEach(item => {
         item.classList.remove('active');
         if (item.dataset.view === viewName) {
@@ -133,7 +122,6 @@ function switchView(viewName) {
         }
     });
 
-    // Toggle views
     elements.views.forEach(section => {
         section.classList.remove('active');
         if (section.id === `view-${viewName}`) {
@@ -141,9 +129,8 @@ function switchView(viewName) {
         }
     });
     
-    // Context-specific actions
-    if (viewName === 'processes') {
-        updateSystemMetrics();
+    if (viewName === 'security') {
+        updateWorkspaceStatus();
     } else if (viewName === 'git') {
         updateGitStatus();
     }
@@ -161,7 +148,7 @@ function checkApiKey() {
     }
 }
 
-// Backend service connectivity check
+// Backend Health status
 async function checkBackendHealth() {
     try {
         const response = await fetch(`${BACKEND_URL}/api/health`);
@@ -172,110 +159,104 @@ async function checkBackendHealth() {
         }
     } catch (err) {
         elements.statusDot.className = 'indicator-dot offline';
-        elements.backendStatus.textContent = 'Backend Offline (Run start-vibeops.bat)';
+        elements.backendStatus.textContent = 'Backend Offline';
     }
 }
 
-// Poll OS metrics
-async function updateSystemMetrics() {
+// Poll workspace configuration and secrets leaks
+async function updateWorkspaceStatus() {
     try {
-        const response = await fetch(`${BACKEND_URL}/api/system-stats`);
+        const response = await fetch(`${BACKEND_URL}/api/workspace-status`);
         const data = await response.json();
         if (data.status === 'success') {
-            const h = data.health;
+            const struct = data.structure;
             
-            // Update dials
-            setRingProgress(elements.cpuRing, h.cpu_percent);
-            elements.cpuVal.textContent = `${Math.round(h.cpu_percent)}%`;
+            // Render languages profile
+            elements.frameworksVal.textContent = struct.languages_detected.join(', ') || 'Plain Codebase';
+            elements.filesCount.textContent = struct.total_files;
             
-            setRingProgress(elements.ramRing, h.ram_percent);
-            elements.ramVal.textContent = `${Math.round(h.ram_percent)}%`;
+            // Populate file preview list
+            elements.filesPreviewList.innerHTML = '';
+            struct.files_preview.forEach(file => {
+                const li = document.createElement('li');
+                li.textContent = file;
+                elements.filesPreviewList.appendChild(li);
+            });
             
-            // Update labels
-            elements.ramUsed.textContent = h.ram_used_gb.toFixed(2);
-            elements.ramTotal.textContent = h.ram_total_gb.toFixed(2);
-            elements.diskPercent.textContent = `${h.disk_percent}%`;
-            
-            // Update process displays
-            renderProcesses(data.processes);
+            // Populate secrets summary and details
+            renderSecrets(data.secrets_count, data.secrets);
         }
     } catch (err) {
-        console.error('Failed to fetch system stats:', err);
+        console.error('Failed to query workspace structure:', err);
     }
 }
 
-// Update SVG ring dashes
-function setRingProgress(circle, percent) {
-    const radius = circle.r.baseVal.value;
-    const circumference = radius * 2 * Math.PI;
-    circle.style.strokeDasharray = `${circumference} ${circumference}`;
-    const offset = circumference - (percent / 100 * circumference);
-    circle.style.strokeDashoffset = offset;
-}
-
-// Render process tables
-function renderProcesses(processes) {
-    // 1. Dashboard top 5 processes
-    elements.processSummaryBody.innerHTML = '';
-    processes.slice(0, 5).forEach(proc => {
-        const tr = document.createElement('tr');
-        let classTag = 'tag-cyan';
-        if (proc.category === 'Development') classTag = 'tag-violet';
-        if (proc.category === 'General') classTag = '';
-        
-        tr.innerHTML = `
-            <td><strong>${proc.name}</strong></td>
-            <td>${proc.memory_mb.toFixed(1)} MB</td>
-            <td><span class="tag ${classTag}">${proc.category}</span></td>
-            <td><button class="btn-terminate" onclick="requestProcessKill(${proc.pid}, '${proc.name}')">Kill</button></td>
+// Render secrets audit tables
+function renderSecrets(count, secrets) {
+    if (count === 0) {
+        elements.secretsSummary.innerHTML = `
+            <p class="tag-green" style="padding: 0.8rem; border-radius: 8px; text-align: center; font-weight: 500;">
+                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Clean: No leaked credentials detected.
+            </p>
         `;
-        elements.processSummaryBody.appendChild(tr);
-    });
-
-    // 2. Full table process manager view
-    elements.processesTableBody.innerHTML = '';
-    processes.forEach(proc => {
-        const tr = document.createElement('tr');
-        let classTag = 'tag-cyan';
-        if (proc.category === 'Development') classTag = 'tag-violet';
-        if (proc.category === 'General') classTag = '';
-        
-        tr.innerHTML = `
-            <td><code>${proc.pid}</code></td>
-            <td><strong>${proc.name}</strong></td>
-            <td><code>${proc.memory_mb.toFixed(1)} MB</code></td>
-            <td><code>${proc.cpu_percent.toFixed(1)}%</code></td>
-            <td><span class="tag ${classTag}">${proc.category}</span></td>
-            <td><button class="btn-terminate" onclick="requestProcessKill(${proc.pid}, '${proc.name}')"><i class="ph ph-trash"></i> Terminate</button></td>
+        elements.secretsTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No hardcoded secrets found. Your codebase is secure!</td></tr>`;
+    } else {
+        elements.secretsSummary.innerHTML = `
+            <p class="tag-red" style="padding: 0.8rem; border-radius: 8px; text-align: center; font-weight: 600;">
+                <i class="ph ph-warning-octagon" style="font-size: 1.2rem; vertical-align: middle;"></i> Warn: Found ${count} leaked API keys!
+            </p>
         `;
-        elements.processesTableBody.appendChild(tr);
-    });
-}
-
-// Action executor trigger (Safety Gate approval)
-async function requestProcessKill(pid, name) {
-    const confirmKill = confirm(`[Security Gate] Are you sure you want to terminate process "${name}" (PID: ${pid})?`);
-    if (confirmKill) {
-        await executeKill(pid);
+        
+        elements.secretsTableBody.innerHTML = '';
+        secrets.forEach(sec => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><code>${sec.file}</code></td>
+                <td><code>Line ${sec.line}</code></td>
+                <td><span class="tag tag-red">${sec.type}</span></td>
+                <td><code>${sec.masked}</code></td>
+            `;
+            elements.secretsTableBody.appendChild(tr);
+        });
     }
 }
 
-async function executeKill(pid) {
+// Action executor trigger (Safety command execution gate)
+async function runSystemCommand(commandBtn, commandString) {
+    commandBtn.disabled = true;
+    commandBtn.textContent = 'Executing...';
+    commandBtn.style.boxShadow = '0 0 15px var(--amber)';
+    
+    // Add logs window to chat stream
+    const outputLogBox = document.createElement('div');
+    outputLogBox.style.cssText = 'background:#000; border: 1px solid var(--border-glass); border-radius: 8px; padding: 1rem; margin-top: 0.5rem; font-family: "JetBrains Mono", monospace; font-size: 0.85rem; max-height: 200px; overflow-y: auto; white-space: pre-wrap; color: #fff;';
+    outputLogBox.textContent = 'Connecting terminal shell...';
+    commandBtn.parentElement.appendChild(outputLogBox);
+
     try {
-        const response = await fetch(`${BACKEND_URL}/api/execute-action`, {
+        const response = await fetch(`${BACKEND_URL}/api/run-command`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pid })
+            body: JSON.stringify({ command: commandString })
         });
         const data = await response.json();
+        
         if (data.status === 'success') {
-            showToast(data.message);
-            updateSystemMetrics();
+            commandBtn.textContent = 'Success!';
+            commandBtn.style.background = 'var(--green)';
+            commandBtn.style.boxShadow = 'none';
+            outputLogBox.textContent = data.output;
+            showToast('Terminal command executed successfully!');
         } else {
-            showToast(`Error: ${data.message}`);
+            commandBtn.textContent = 'Failed';
+            commandBtn.style.background = 'var(--red)';
+            outputLogBox.textContent = `Error: ${data.detail}`;
+            showToast('Command execution failed.');
         }
     } catch (err) {
-        showToast('Failed to connect to backend execution gate.');
+        commandBtn.textContent = 'Error';
+        commandBtn.style.background = 'var(--red)';
+        outputLogBox.textContent = 'Failed to connect to backend execution gate.';
     }
 }
 
@@ -292,7 +273,7 @@ async function updateGitStatus() {
                 return;
             }
             
-            // Dashboard Summary Card
+            // Dashboard summary widget
             const dirtyLabel = git.is_dirty ? '<span class="git-status-modified">Uncommitted Changes</span>' : '<span class="tag-green">Clean</span>';
             elements.gitSummaryContent.innerHTML = `
                 <div class="git-meta-details" style="margin-bottom:0; padding-bottom:0; border:none;">
@@ -302,12 +283,12 @@ async function updateGitStatus() {
                 </div>
             `;
             
-            // Full Git Status page
+            // Full Git Status page view
             elements.gitPath.textContent = git.repo_root;
             elements.gitBranch.textContent = git.current_branch;
             elements.gitDirtyStatus.innerHTML = git.is_dirty ? '<span class="git-status-modified">Modified Workspace (Dirty)</span>' : '<span class="tag-green" style="padding:0.25rem 0.5rem; border-radius:4px;">Workspace Clean</span>';
             
-            // Changed Files List
+            // Modified list
             elements.gitChangesList.innerHTML = '';
             if (git.changed_files.length === 0) {
                 elements.gitChangesList.innerHTML = '<li class="git-status-untracked">No changed files.</li>';
@@ -319,7 +300,7 @@ async function updateGitStatus() {
                 });
             }
             
-            // Untracked Files List
+            // Untracked list
             elements.gitUntrackedList.innerHTML = '';
             if (git.untracked_files.length === 0) {
                 elements.gitUntrackedList.innerHTML = '<li class="git-status-untracked">No untracked files.</li>';
@@ -331,7 +312,7 @@ async function updateGitStatus() {
                 });
             }
             
-            // Timeline Commits
+            // Timelines
             elements.gitCommitsTimeline.innerHTML = '';
             if (git.recent_commits.length === 0) {
                 elements.gitCommitsTimeline.innerHTML = '<p class="git-status-untracked">No commits found.</p>';
@@ -374,12 +355,10 @@ async function handleChatSubmit(e) {
     const query = elements.chatInput.value.trim();
     if (!query) return;
     
-    // Add user message to UI
     appendMessage(query, 'user');
     elements.chatInput.value = '';
     
-    // Add typing indicator
-    const typingIndicator = appendMessage('<i class="ph-bold ph-spinner spinner"></i> Thinking...', 'assistant typing');
+    const typingIndicator = appendMessage('<i class="ph-bold ph-spinner spinner"></i> Consulting coordinator...', 'assistant typing');
     
     try {
         const response = await fetch(`${BACKEND_URL}/api/chat`, {
@@ -392,18 +371,16 @@ async function handleChatSubmit(e) {
         });
         
         const data = await response.json();
-        
-        // Remove typing indicator
         typingIndicator.remove();
         
         if (data.status === 'success') {
             appendMessage(data.reply, 'assistant');
         } else {
-            appendMessage(`Error: ${data.detail || 'Failed to generate agent response.'}`, 'assistant');
+            appendMessage(`Error: ${data.detail || 'Failed to complete agent execution.'}`, 'assistant');
         }
     } catch (err) {
         typingIndicator.remove();
-        appendMessage('Error: Failed to connect to the backend agent server. Verify it is running.', 'assistant');
+        appendMessage('Error: Failed to connect to the backend agent server. Verify it is online.', 'assistant');
     }
 }
 
@@ -414,20 +391,20 @@ function appendMessage(text, sender) {
     if (sender.includes('user')) {
         messageDiv.textContent = text;
     } else {
-        // Parse basic markdown formatting and custom action tags
         let parsedHtml = parseMarkdown(text);
         
-        // Parse recommendation actions: [RECOMMENDED_ACTION:TERMINATE:PID:NAME]
-        const actionPattern = /\[RECOMMENDED_ACTION:TERMINATE:(\d+):([^\]]+)\]/g;
+        // Parse execution actions: [RECOMMENDED_ACTION:RUN_COMMAND:SHELL_COMMAND]
+        const actionPattern = /\[RECOMMENDED_ACTION:RUN_COMMAND:([^\]]+)\]/g;
         
-        parsedHtml = parsedHtml.replace(actionPattern, (match, pid, name) => {
+        parsedHtml = parsedHtml.replace(actionPattern, (match, cmd) => {
+            const commandEscaped = cmd.replace(/"/g, '&quot;');
             return `
                 <div class="recommendation-action-block">
                     <div class="rec-details">
-                        <h4><i class="ph-fill ph-warning-circle"></i> Clean memory leak: ${name}</h4>
-                        <p>Terminate Process PID ${pid} to optimize memory.</p>
+                        <h4><i class="ph-fill ph-warning-circle"></i> VibeOps Shell Command Gate</h4>
+                        <p>Approve execution: <code>${cmd}</code></p>
                     </div>
-                    <button class="btn-action-execute" onclick="executeKill(${pid})">Approve Action</button>
+                    <button class="btn-action-execute" onclick="runSystemCommand(this, '${commandEscaped}')">Approve & Run</button>
                 </div>
             `;
         });
@@ -436,51 +413,31 @@ function appendMessage(text, sender) {
     }
     
     elements.chatMessagesBox.appendChild(messageDiv);
-    
-    // Scroll chat window to bottom
     elements.chatMessagesBox.scrollTop = elements.chatMessagesBox.scrollHeight;
     
     return messageDiv;
 }
 
-// Simple markdown parsing helper
 function parseMarkdown(text) {
     let html = text;
-    
-    // Escape HTML tags to prevent cross-site scripting/injection
     html = html.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    
-    // Restore routing tags or recommendation tags that we want to keep
     html = html.replace(/&lt;route&gt;/g, "<route>").replace(/&lt;\/route&gt;/g, "</route>");
-    
-    // Parse bold code
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    
-    // Parse italic code
     html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    
-    // Parse inline code blocks
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    
-    // Parse line breaks
     html = html.replace(/\n/g, '<br>');
-    
     return html;
 }
 
-// Toast Notification
 function showToast(message) {
     elements.toast.textContent = message;
     elements.toast.classList.remove('hidden');
-    
     setTimeout(() => {
         elements.toast.classList.add('hidden');
-    }, 4000);
+    }, 4500);
 }
 
-// Global scope bindings for inline event triggers
-window.requestProcessKill = requestProcessKill;
-window.executeKill = executeKill;
+// Binds execution function globally for button clicks
+window.runSystemCommand = runSystemCommand;
 
-// Run
 document.addEventListener('DOMContentLoaded', init);

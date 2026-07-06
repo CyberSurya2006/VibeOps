@@ -2,7 +2,7 @@ import os
 import json
 import mcp.types as types
 from mcp.server import Server
-from .sys_utils import get_system_health, get_process_list, kill_process_by_pid, get_git_status
+from .sys_utils import get_workspace_structure, get_git_status, scan_for_secrets
 
 # Initialize MCP Server
 server = Server("vibeops-mcp-server")
@@ -10,19 +10,19 @@ server = Server("vibeops-mcp-server")
 @server.list_resources()
 async def handle_list_resources() -> list[types.Resource]:
     """
-    Exposes system metrics and git status as readable MCP resources.
+    Registers the workspace layout and git status as readable MCP resources.
     """
     return [
         types.Resource(
-            uri="mcp://system/metrics",
-            name="System Health Metrics",
-            description="Real-time CPU, RAM, and disk utilization statistics.",
+            uri="mcp://workspace/files",
+            name="Workspace Directory Details",
+            description="Exposes languages detected and file structure preview.",
             mimeType="application/json"
         ),
         types.Resource(
-            uri="mcp://git/status",
-            name="Workspace Git Status",
-            description="Overview of uncommitted changes and branch status in the current project.",
+            uri="mcp://git/diff",
+            name="Git Repository State",
+            description="Exposes current branch, dirty state, and uncommitted changes list.",
             mimeType="application/json"
         )
     ]
@@ -30,52 +30,37 @@ async def handle_list_resources() -> list[types.Resource]:
 @server.read_resource()
 async def handle_read_resource(uri: str) -> str:
     """
-    Handles reading of the registered resources.
+    Reads the content of the requested MCP resources.
     """
-    if uri == "mcp://system/metrics":
-        return json.dumps(get_system_health())
-    elif uri == "mcp://git/status":
-        # Check current VibeOps root
-        repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return json.dumps(get_git_status(repo_path))
+    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    if uri == "mcp://workspace/files":
+        return json.dumps(get_workspace_structure(root_path))
+    elif uri == "mcp://git/diff":
+        return json.dumps(get_git_status(root_path))
     else:
         raise ValueError(f"Resource not found: {uri}")
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     """
-    Registers developer-agent tools.
+    Registers developer agent operational tools.
     """
     return [
         types.Tool(
-            name="get_process_list",
-            description="Lists active system processes sorted by RAM usage to identify memory leaks or resource-intensive tasks.",
+            name="scan_for_secrets",
+            description="Performs regex scanning over project source files to verify there are no leaked API keys or credentials.",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "description": "Maximum processes to return", "default": 10}
-                }
+                "properties": {}
             }
         ),
         types.Tool(
-            name="reclaim_memory",
-            description="Terminates a specific process by its PID to reclaim RAM/VRAM. Note: Requires explicit user approval on execution.",
+            name="get_build_targets",
+            description="Inspects active files to recommend build and test commands (e.g. pytest for Python, npm test for Node).",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "pid": {"type": "integer", "description": "Process ID to terminate"}
-                },
-                "required": ["pid"]
-            }
-        ),
-        types.Tool(
-            name="git_diff_summary",
-            description="Inspects active files in the local Git repository and provides branch information, unstaged files, and commit logs.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "repo_path": {"type": "string", "description": "Absolute path to the Git repository folder. If omitted, uses current workspace."}
-                }
+                "properties": {}
             }
         )
     ]
@@ -83,32 +68,35 @@ async def handle_list_tools() -> list[types.Tool]:
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
     """
-    Routes agent tool calls to local system operations.
+    Routes agent tool requests to system calls.
     """
+    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     arguments = arguments or {}
     
-    if name == "get_process_list":
-        limit = arguments.get("limit", 10)
-        processes = get_process_list(limit)
-        return [types.TextContent(type="text", text=json.dumps(processes, indent=2))]
+    if name == "scan_for_secrets":
+        findings = scan_for_secrets(root_path)
+        return [types.TextContent(type="text", text=json.dumps(findings, indent=2))]
         
-    elif name == "reclaim_memory":
-        pid = arguments.get("pid")
-        if not pid:
-            return [types.TextContent(type="text", text="Error: PID parameter is required.")]
+    elif name == "get_build_targets":
+        structure = get_workspace_structure(root_path)
+        langs = structure.get("languages_detected", [])
         
-        # Call termination helper
-        result = kill_process_by_pid(pid)
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        
-    elif name == "git_diff_summary":
-        repo_path = arguments.get("repo_path")
-        if not repo_path:
-            # Fallback to local workspace
-            repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        targets = []
+        for lang in langs:
+            if "Python" in lang:
+                targets.append({"target": "pytest", "command": "pytest", "description": "Run Python unit tests."})
+                targets.append({"target": "python-script", "command": "python vibeops-cli.py --help", "description": "Verify python script syntax."})
+            elif "Node.js" in lang:
+                targets.append({"target": "npm-test", "command": "npm test", "description": "Run Node project test suites."})
+                targets.append({"target": "npm-build", "command": "npm run build", "description": "Compile Node codebase assets."})
+            elif ".NET" in lang:
+                targets.append({"target": "dotnet-build", "command": "dotnet build", "description": "Compile C# assemblies."})
+                targets.append({"target": "dotnet-test", "command": "dotnet test", "description": "Run dotnet tests."})
+                
+        if not targets:
+            targets.append({"target": "generic-echo", "command": "echo 'No build target found'", "description": "Verify terminal functionality."})
             
-        status = get_git_status(repo_path)
-        return [types.TextContent(type="text", text=json.dumps(status, indent=2))]
+        return [types.TextContent(type="text", text=json.dumps(targets, indent=2))]
         
     else:
         raise ValueError(f"Unknown tool: {name}")

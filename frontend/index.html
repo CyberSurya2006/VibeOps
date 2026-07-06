@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VibeOps | Dev Workspace & Agentic Cockpit</title>
-    <meta name="description" content="A futuristic developer cockpit powered by local multi-agents and MCP tools.">
+    <title>VibeOps | Developer Multi-Agent Workspace Cockpit</title>
+    <meta name="description" content="A futuristic developer cockpit to automate builds, run tests, and scan credentials.">
     <link rel="stylesheet" href="index.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,7 +24,7 @@
             </div>
             <ul class="nav-links">
                 <li class="active" data-view="dashboard"><a href="#"><i class="ph ph-cpu"></i> Cockpit</a></li>
-                <li data-view="processes"><a href="#"><i class="ph ph-list-numbers"></i> Processes</a></li>
+                <li data-view="security"><a href="#"><i class="ph ph-shield-check"></i> Secrets Shield</a></li>
                 <li data-view="git"><a href="#"><i class="ph ph-git-branch"></i> Workspace Git</a></li>
                 <li data-view="agent"><a href="#"><i class="ph ph-sparkle"></i> Agent Console</a></li>
                 <li data-view="settings"><a href="#"><i class="ph ph-sliders"></i> Settings</a></li>
@@ -35,13 +35,12 @@
             </div>
         </nav>
 
-        <!-- Main Dashboard Content -->
+        <!-- Main Content -->
         <main class="main-content">
-            <!-- Header -->
             <header class="top-header">
                 <div class="title-block">
-                    <h1>Developer Cockpit</h1>
-                    <p>Local agent workspace & OS diagnostics console.</p>
+                    <h1>Vibe Coding Cockpit</h1>
+                    <p>Automate compiles, test suites, and codebase checks.</p>
                 </div>
                 <div class="api-key-badge" id="key-badge">
                     <i class="ph ph-key"></i>
@@ -49,102 +48,72 @@
                 </div>
             </header>
 
-            <!-- VIEW: Dashboard -->
+            <!-- VIEW: Cockpit -->
             <div id="view-dashboard" class="view-section active">
                 <div class="dashboard-grid">
-                    <!-- Resource Dials -->
-                    <div class="card glass metrics-card">
-                        <h2>Resource Utilization</h2>
-                        <div class="dials-container">
-                            <div class="dial-wrapper">
-                                <svg class="progress-ring" width="120" height="120">
-                                    <circle class="progress-ring-bg" stroke="rgba(255,255,255,0.05)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60"/>
-                                    <circle class="progress-ring-circle" id="cpu-ring" stroke="var(--cyan)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60" stroke-dasharray="314.16" stroke-dashoffset="314.16"/>
-                                </svg>
-                                <div class="dial-label">
-                                    <span class="dial-value" id="cpu-val">0%</span>
-                                    <span class="dial-name">CPU</span>
-                                </div>
-                            </div>
-                            <div class="dial-wrapper">
-                                <svg class="progress-ring" width="120" height="120">
-                                    <circle class="progress-ring-bg" stroke="rgba(255,255,255,0.05)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60"/>
-                                    <circle class="progress-ring-circle" id="ram-ring" stroke="var(--violet)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60" stroke-dasharray="314.16" stroke-dashoffset="314.16"/>
-                                </svg>
-                                <div class="dial-label">
-                                    <span class="dial-value" id="ram-val">0%</span>
-                                    <span class="dial-name">RAM</span>
-                                </div>
-                            </div>
+                    <!-- Project Profile -->
+                    <div class="card glass project-profile-card">
+                        <h2>Workspace Overview</h2>
+                        <div class="profile-details">
+                            <p>Detected Frameworks: <span class="tag tag-cyan" id="frameworks-val">None</span></p>
+                            <p>Files Tracked: <span id="files-count">0</span> files</p>
                         </div>
-                        <div class="memory-details">
-                            <p>RAM Utilized: <span id="ram-used">0.0</span> / <span id="ram-total">0.0</span> GB</p>
-                            <p>System Disk Load: <span id="disk-percent">0%</span></p>
+                        <div class="file-preview-box">
+                            <h3>Files Found:</h3>
+                            <ul class="file-list-small" id="files-preview-list">
+                                <!-- Populated by JS -->
+                            </ul>
                         </div>
                     </div>
 
-                    <!-- Git Status Overview -->
+                    <!-- Secrets Screening summary -->
+                    <div class="card glass secrets-card">
+                        <h2>Secrets & Token Scan</h2>
+                        <div class="secrets-summary-content" id="secrets-summary">
+                            <p class="tag-green" style="padding: 0.5rem; border-radius: 8px; text-align: center;"><i class="ph ph-check-circle"></i> Clean: No leaked credentials detected.</p>
+                        </div>
+                    </div>
+
+                    <!-- Git Status overview -->
                     <div class="card glass git-summary-card">
-                        <h2>Workspace Git Status</h2>
+                        <h2>Git Branch Status</h2>
                         <div id="git-summary-content">
-                            <p class="loading-text"><i class="ph-bold ph-spinner spinner"></i> Inspecting repository...</p>
+                            <p class="loading-text"><i class="ph-bold ph-spinner spinner"></i> Scanning workspace...</p>
                         </div>
                     </div>
 
-                    <!-- Top Memory Hogging Processes -->
-                    <div class="card glass processes-summary-card">
-                        <h2>Resource Heavy Processes</h2>
-                        <div class="table-container-small">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>RAM (MB)</th>
-                                        <th>Category</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="process-summary-body">
-                                    <!-- Populated by JS -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Quick Agent Actions -->
-                    <div class="card glass quick-actions-card">
-                        <h2>Suggested Agent Prompts</h2>
+                    <!-- Suggested Prompts -->
+                    <div class="card glass operations-card">
+                        <h2>Suggested Prompts</h2>
                         <div class="suggestion-grid">
-                            <button class="suggest-btn" data-prompt="Analyze running processes and suggest optimization."><i class="ph ph-cpu"></i> Optimize System RAM</button>
-                            <button class="suggest-btn" data-prompt="Summarize my active Git uncommitted modifications."><i class="ph ph-git-diff"></i> Review Uncommitted Code</button>
-                            <button class="suggest-btn" data-prompt="Why is my computer running slowly? Inspect RAM hogs."><i class="ph ph-info"></i> Troubleshoot Heavy Apps</button>
-                            <button class="suggest-btn" data-prompt="Show Git branch status and recent commits."><i class="ph ph-git-branch"></i> Workspace Audit</button>
+                            <button class="suggest-btn" data-prompt="Run tests on the project."><i class="ph ph-play-circle"></i> Run Test Suite</button>
+                            <button class="suggest-btn" data-prompt="Scan project files for credentials leaks."><i class="ph ph-shield"></i> Run Secrets Scan</button>
+                            <button class="suggest-btn" data-prompt="Analyze uncommitted files and write a commit message."><i class="ph ph-git-commit"></i> Draft Git Commit</button>
+                            <button class="suggest-btn" data-prompt="What target commands are available to compile this project?"><i class="ph ph-info"></i> Recommends Commands</button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- VIEW: Processes -->
-            <div id="view-processes" class="view-section">
+            <!-- VIEW: Secrets Shield -->
+            <div id="view-security" class="view-section">
                 <div class="card glass full-width-card">
                     <div class="card-header">
-                        <h2>Running System Processes</h2>
-                        <button class="btn-primary" id="btn-refresh-processes"><i class="ph ph-arrows-counter-clockwise"></i> Refresh</button>
+                        <h2>API Key & Secrets Shield</h2>
+                        <button class="btn-primary" id="btn-run-scan"><i class="ph ph-shield-warning"></i> Run Scan</button>
                     </div>
-                    <p class="section-desc">Active tasks consuming RAM. Terminate idle applications to optimize memory.</p>
+                    <p class="section-desc">Locates hardcoded credentials and passwords in files to prevent leaking them to repository servers.</p>
                     <div class="table-container-large">
                         <table class="full-table">
                             <thead>
                                 <tr>
-                                    <th>PID</th>
-                                    <th>Process Name</th>
-                                    <th>RAM Usage</th>
-                                    <th>CPU Usage</th>
-                                    <th>Classification</th>
-                                    <th>Action</th>
+                                    <th>File Path</th>
+                                    <th>Line</th>
+                                    <th>Leak Type</th>
+                                    <th>Masked Key Preview</th>
                                 </tr>
                             </thead>
-                            <tbody id="processes-table-body">
+                            <tbody id="secrets-table-body">
                                 <!-- Populated by JS -->
                             </tbody>
                         </table>
@@ -152,7 +121,7 @@
                 </div>
             </div>
 
-            <!-- VIEW: Git Status -->
+            <!-- VIEW: Workspace Git -->
             <div id="view-git" class="view-section">
                 <div class="git-grid">
                     <div class="card glass repo-info-card">
@@ -167,7 +136,7 @@
                                 <span class="meta-value branch-tag" id="git-branch">-</span>
                             </div>
                             <div class="meta-item">
-                                <span class="meta-label">Working Directory:</span>
+                                <span class="meta-label">Working Tree:</span>
                                 <span class="meta-value" id="git-dirty-status">-</span>
                             </div>
                         </div>
@@ -182,7 +151,7 @@
                     </div>
 
                     <div class="card glass commits-card">
-                        <h2>Recent Commits</h2>
+                        <h2>Commit Timeline</h2>
                         <div class="timeline" id="git-commits-timeline">
                             <!-- Populated by JS -->
                         </div>
@@ -196,20 +165,20 @@
                     <div class="chat-header">
                         <div class="agent-avatar"><i class="ph-fill ph-sparkle"></i></div>
                         <div class="agent-info">
-                            <h3>VibeOps Multi-Agent System</h3>
-                            <p>OpsCoordinator, SysAdmin & DevCopilot Online</p>
+                            <h3>VibeOps Operations Agent</h3>
+                            <p>BuildTest, SecretShield & GitOps Online</p>
                         </div>
                     </div>
                     <div class="chat-messages" id="chat-messages-box">
                         <div class="message assistant">
-                            Hello! I am the **VibeOps Multi-Agent Console**. I can inspect your local resource metrics, identify heavy system processes, suggest code changes, or review your Git status.
+                            Hello! I am the **VibeOps Development Console**. I can scan your project files for credentials, compile your source files, run your unit test suites, or help write git commit messages.
                             <br><br>
-                            How can I help you optimize your workspace today?
+                            How can I help you automate your coding operations today?
                         </div>
                     </div>
                     <div class="chat-input-area">
                         <form id="chat-form">
-                            <input type="text" id="chat-input" placeholder="Ask SysAdmin to clean memory or DevCopilot to review git changes..." autocomplete="off" required>
+                            <input type="text" id="chat-input" placeholder="Ask BuildTest to run tests or SecretShield to check for leaks..." autocomplete="off" required>
                             <button type="submit" class="btn-primary" id="btn-send"><i class="ph ph-paper-plane-right"></i> Send</button>
                         </form>
                     </div>
@@ -233,7 +202,6 @@
         </main>
     </div>
 
-    <!-- Notification system -->
     <div id="toast" class="toast hidden"></div>
 
     <script src="app.js"></script>

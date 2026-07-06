@@ -1,30 +1,29 @@
 import os
+import json
 from google import genai
 from google.genai import types
-from .sys_utils import get_system_health, get_process_list, get_git_status
+from .sys_utils import get_workspace_structure, get_git_status, scan_for_secrets
 
-def call_sysadmin(client: genai.Client, user_query: str) -> str:
+def call_buildtest(client: genai.Client, user_query: str) -> str:
     """
-    Invokes the SysAdmin agent with real-time OS metrics and process list context.
+    Invokes the BuildTest agent with workspace file targets.
+    Formulates safe compiler or testing terminal commands.
     """
-    metrics = get_system_health()
-    processes = get_process_list(limit=15)
+    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    structure = get_workspace_structure(root_path)
     
     context = f"""
-Current System Health Metrics:
-- CPU Usage: {metrics.get('cpu_percent')}%
-- RAM Usage: {metrics.get('ram_percent')}% ({metrics.get('ram_used_gb')} GB used / {metrics.get('ram_total_gb')} GB total)
-- Disk Usage: {metrics.get('disk_percent')}%
-
-Top 15 Resource-consuming Processes:
-{processes}
+Workspace Directory Structure:
+- Detected Language Profiles: {structure.get('languages_detected', [])}
+- Total files: {structure.get('total_files', 0)}
+- Files preview: {structure.get('files_preview', [])}
 """
     
-    sys_instruction = """You are the SysAdmin Agent. You specialize in OS resource diagnostics, RAM/VRAM optimizations, and process troubleshooting.
-Analyze the system metrics and process list provided in the context to answer the developer's question.
-If the developer asks to fix high memory, optimize RAM, or clean up, identify specific processes that are safe to terminate (e.g., idle background browsers, communication helpers, dev databases not in use) and recommend reclaiming memory by specifying their PID.
-Safety Rule: Never recommend terminating critical system files (like kernel, system, svchost, or the python process running VibeOps).
-Keep responses concise, professional, and action-oriented. Provide process names and PIDs clearly.
+    sys_instruction = """You are the BuildTest Agent. You specialize in build pipelines, compilers, and test orchestration.
+Examine the workspace files provided in the context to answer the query.
+If the developer asks to run tests, build the project, or compile, construct the appropriate terminal command (e.g. pytest, npm test, cargo test, dotnet build) and suggest it.
+Rules: Recommending commands must use exactly one of the supported base tools: npm, pip, python, pytest, cargo, go, dotnet, git, echo. Never suggest command chaining or pipelines using dividers.
+Explain briefly what the command will do.
 """
     
     response = client.models.generate_content(
@@ -33,7 +32,7 @@ Keep responses concise, professional, and action-oriented. Provide process names
             types.Content(
                 role="user",
                 parts=[
-                    types.Part.from_text(text=f"System Context:\n{context}\n\nDeveloper Query:\n{user_query}")
+                    types.Part.from_text(text=f"Workspace Context:\n{context}\n\nDeveloper Query:\n{user_query}")
                 ]
             )
         ],
@@ -44,27 +43,62 @@ Keep responses concise, professional, and action-oriented. Provide process names
     )
     return response.text
 
-def call_devcopilot(client: genai.Client, user_query: str) -> str:
+def call_secretshield(client: genai.Client, user_query: str) -> str:
     """
-    Invokes the DevCopilot agent with local workspace Git repository status.
+    Invokes the SecretShield agent to scan for credentials leaks.
     """
-    # Use parent directory as the workspace repo path
-    repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    git_status = get_git_status(repo_path)
+    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    findings = scan_for_secrets(root_path)
     
     context = f"""
-Git Repository Status (Workspace Root: {repo_path}):
-- Current Branch: {git_status.get('current_branch', 'N/A')}
-- Working Tree Dirty: {git_status.get('is_dirty', False)}
-- Uncommitted Files: {git_status.get('changed_files', [])}
-- Untracked Files: {git_status.get('untracked_files', [])}
-- Recent Commits: {git_status.get('recent_commits', [])}
+Codebase Secret Scan Findings:
+{json.dumps(findings, indent=2)}
 """
     
-    sys_instruction = """You are the DevCopilot Agent. You specialize in Git repository management, workspace tracking, commit summaries, and code reviews.
-Analyze the repository status provided in the context to address the developer's request.
-Help the user see what files they are working on, summarize recent changes, or recommend files that should be committed, discarded, or ignored.
-Keep responses clear and focused on Git structure and file names. Use markdown formatting.
+    sys_instruction = """You are the SecretShield Agent. You specialize in scanning codebases for leaked credentials, passwords, and hardcoded API tokens.
+Analyze the scan findings provided in the context.
+Report any leaked items (Google API Keys, AWS secrets, GitHub tokens, generic secrets).
+List the file name and line number, but always use the 'masked' token format to avoid displaying the secret in logs.
+If no leaks are found, report that the codebase is clean and secure.
+"""
+    
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=[
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=f"Scan Context:\n{context}\n\nDeveloper Query:\n{user_query}")
+                ]
+            )
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction=sys_instruction,
+            temperature=0.2
+        )
+    )
+    return response.text
+
+def call_gitops(client: genai.Client, user_query: str) -> str:
+    """
+    Invokes the GitOps agent to review code modifications.
+    """
+    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    git_status = get_git_status(root_path)
+    
+    context = f"""
+Git Repository Status:
+- Branch: {git_status.get('current_branch', 'N/A')}
+- Dirty: {git_status.get('is_dirty', False)}
+- Uncommitted changes: {git_status.get('changed_files', [])}
+- Untracked files: {git_status.get('untracked_files', [])}
+- Recent history: {git_status.get('recent_commits', [])}
+"""
+    
+    sys_instruction = """You are the GitOps Agent. You specialize in git commands, committing code, and tracking repository changes.
+Analyze the git repository status provided in the context to address the developer's question.
+If they ask to summarize work, check changes, or compile a commit, write a descriptive, semantic git commit message, list changed files, and recommend staging actions.
+Use standard git workflows. Keep responses clear and formatted in markdown.
 """
     
     response = client.models.generate_content(
@@ -86,26 +120,27 @@ Keep responses clear and focused on Git structure and file names. Use markdown f
 
 def run_multi_agent_system(api_key: str, user_message: str) -> str:
     """
-    Orchestrates the multi-agent execution:
-    1. Router analyzes query and tags the route.
-    2. Coordinator calls appropriate specialists (SysAdmin, DevCopilot).
-    3. Coordinator synthesizes final response with safety actions.
+    Orchestrates the multi-agent automation workspace cockpit:
+    1. Coordinator routes the request via route tags.
+    2. Invokes BuildTest, SecretShield, or GitOps.
+    3. Coordinator synthesizes final response with execution blocks.
     """
     client = genai.Client(api_key=api_key)
     
-    coordinator_instruction = """You are the OpsCoordinator, the central dispatcher of the VibeOps Multi-Agent Cockpit.
-Your role is to analyze the developer's query and coordinate with your specialized agents:
-- SysAdmin: Deals with CPU, RAM, disk, processes, PID management, and memory reclamation.
-- DevCopilot: Deals with Git repositories, branches, commits, unstaged files, and code.
+    coordinator_instruction = """You are the OpsCoordinator, the dispatcher of the VibeOps Development Cockpit.
+Analyze the developer query and delegate to specialists:
+- BuildTest: Compile code, run test suites, executing build targets.
+- SecretShield: Scanning files for API keys, passwords, leaked credentials, security checks.
+- GitOps: Git diffs, commits, branches, modified files.
 
-Select which agent to invoke based on the query. If the query requires both, invoke both.
-To perform the delegation, you will respond with the agent name(s) in XML tags to route the query, like:
-<route>sysadmin</route> if it's about system resources, memory, running apps, or PIDs.
-<route>devcopilot</route> if it's about Git, branch, changes, diffs, or commits.
-<route>both</route> if it covers both areas.
-If the query is a general greeting or unrelated to systems/Git, route to <route>general</route>.
+Select which agent to invoke. You must respond with the agent name in XML tags:
+<route>buildtest</route> if it's about building, tests, or compilers.
+<route>secretshield</route> if it's about secrets, keys, or security audits.
+<route>gitops</route> if it's about git branches, commits, staging, or changes.
+<route>both</route> if it covers multiple topics.
+<route>general</route> if it's unrelated to coding tasks.
 
-Output ONLY the routing tag in your response (e.g. <route>sysadmin</route>). Do not explain your choice.
+Output ONLY the route XML tag in your response.
 """
     
     route_response = client.models.generate_content(
@@ -119,33 +154,38 @@ Output ONLY the routing tag in your response (e.g. <route>sysadmin</route>). Do 
     
     route_text = route_response.text.strip().lower()
     
-    sys_response = ""
-    dev_response = ""
+    build_resp = ""
+    secret_resp = ""
+    git_resp = ""
     
-    # Run agent workers based on route decision
-    if "sysadmin" in route_text or "both" in route_text:
-        sys_response = call_sysadmin(client, user_message)
+    # Trigger appropriate workers
+    if "buildtest" in route_text or "both" in route_text:
+        build_resp = call_buildtest(client, user_message)
+    if "secretshield" in route_text or "both" in route_text:
+        secret_resp = call_secretshield(client, user_message)
+    if "gitops" in route_text or "both" in route_text:
+        git_resp = call_gitops(client, user_message)
         
-    if "devcopilot" in route_text or "both" in route_text:
-        dev_response = call_devcopilot(client, user_message)
-        
-    # Synthesis phase: Coordinator combines results
-    synthesis_instruction = """You are the OpsCoordinator. Synthesize the findings from your specialist agents into a final response for the developer.
-Make sure to present system suggestions, PID actions, or Git status details cleanly in a futuristic, helper tone.
-If the SysAdmin agent recommended terminating a process, include a clear recommendation block at the bottom of your response in the format:
-[RECOMMENDED_ACTION:TERMINATE:PID:PROCESS_NAME] (e.g., [RECOMMENDED_ACTION:TERMINATE:1234:chrome.exe]) so the frontend dashboard can render a safe action approval button.
-If multiple processes are suggested, you can output multiple such action tags.
-Use rich markdown, headers, lists, and bold text. Ensure the developer gets clear, actionable information.
+    # Synthesis phase
+    synthesis_instruction = """You are the OpsCoordinator. Synthesize reports from your worker agents.
+Always maintain a helpful developer persona.
+If a worker recommended running a build/test or git command, you MUST include a clean terminal run action tag at the bottom of your response in the format:
+[RECOMMENDED_ACTION:RUN_COMMAND:SHELL_COMMAND] (e.g. [RECOMMENDED_ACTION:RUN_COMMAND:pytest] or [RECOMMENDED_ACTION:RUN_COMMAND:npm test]) so the frontend dashboard can render a command execution button.
+Ensure the command matches our allowed set: npm, pip, python, pytest, cargo, go, dotnet, git, echo.
+Use rich markdown formatting, headers, tables, and lists.
 """
     
     synthesis_prompt = f"""
-Developer original query: {user_message}
+Developer Query: {user_message}
 
-SysAdmin Agent report:
-{sys_response or "Not consulted."}
+BuildTest Report:
+{build_resp or "Not consulted."}
 
-DevCopilot Agent report:
-{dev_response or "Not consulted."}
+SecretShield Report:
+{secret_resp or "Not consulted."}
+
+GitOps Report:
+{git_resp or "Not consulted."}
 """
     
     final_response = client.models.generate_content(

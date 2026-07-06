@@ -1,28 +1,29 @@
 import re
+import os
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
-from .sys_utils import get_system_health, get_process_list, kill_process_by_pid, get_git_status
+from .sys_utils import get_workspace_structure, scan_for_secrets, get_git_status, run_shell_command
 from .agents import run_multi_agent_system
 
 app = FastAPI(
-    title="VibeOps Backend Service",
-    description="Local developer agent workspace and resource management API.",
-    version="1.0.0"
+    title="VibeOps Code Automation Backend",
+    description="Secure multi-agent assistant automating builds, tests, and repository operations.",
+    version="2.0.0"
 )
 
-# Enable CORS for local web interface development
+# CORS configuration to allow local dashboard connections
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permits local file-system page loads to connect
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Security Features: Input Sanitization & Guardrails ---
+# --- Security Features: Prompt Injection & Sanitization Gates ---
 
 PROMPT_INJECTION_PATTERNS = [
     r"(?i)\bignore previous instructions\b",
@@ -35,21 +36,18 @@ PROMPT_INJECTION_PATTERNS = [
 
 def sanitize_and_check_prompt(prompt: str) -> str:
     """
-    Scans the incoming prompt for suspicious prompt injection patterns
-    and strips hazardous characters to block CLI shell injection risks.
+    Blocks jailbreak attempts and sanitizes input to avoid shell command injections.
     """
-    # 1. Check for prompt injection patterns
     for pattern in PROMPT_INJECTION_PATTERNS:
         if re.search(pattern, prompt):
             raise HTTPException(
                 status_code=400,
-                detail="Security Gate Triggered: Detected suspicious command or instruction override attempt."
+                detail="Security Gate Triggered: Detected suspicious command or jailbreak override attempt."
             )
             
-    # 2. Prevent shell injection payload characters (block sequence operators)
+    # Clean shell operators
     sanitized = re.sub(r"[;&|`$]", "", prompt)
     
-    # 3. Limit length to prevent buffer/cost exhaustion
     if len(sanitized) > 1000:
         sanitized = sanitized[:1000]
         
@@ -58,39 +56,39 @@ def sanitize_and_check_prompt(prompt: str) -> str:
 # --- Request Models ---
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., max_length=1000, description="The developer query to route through the multi-agent cockpit.")
+    message: str = Field(..., max_length=1000, description="User request.")
 
-class ActionRequest(BaseModel):
-    pid: int = Field(..., description="Process ID to terminate.")
+class CommandRequest(BaseModel):
+    command: str = Field(..., description="Terminal command to execute.")
 
 # --- Endpoints ---
 
-@app.get("/api/system-stats")
-async def read_system_stats():
+@app.get("/api/workspace-status")
+async def read_workspace_status():
     """
-    Returns real-time CPU, RAM, and Disk metrics along with active process stats.
+    Returns the workspace file profile and lists any detected secret key leaks.
     """
+    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
-        health = get_system_health()
-        processes = get_process_list(limit=15)
+        structure = get_workspace_structure(root_path)
+        secrets = scan_for_secrets(root_path)
         return {
             "status": "success",
-            "health": health,
-            "processes": processes
+            "structure": structure,
+            "secrets_count": len(secrets),
+            "secrets": secrets
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/git-status")
-async def read_git_status(repo_path: Optional[str] = None):
+async def read_git_status():
     """
-    Inspects git repository status in the current project or a specified folder.
+    Inspects current workspace git status.
     """
-    import os
-    if not repo_path:
-        repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
-        status = get_git_status(repo_path)
+        status = get_git_status(root_path)
         return {
             "status": "success",
             "git": status
@@ -101,52 +99,51 @@ async def read_git_status(repo_path: Optional[str] = None):
 @app.post("/api/chat")
 async def chat_console(request: ChatRequest, x_gemini_api_key: Optional[str] = Header(None)):
     """
-    Chat endpoint routing user queries to the multi-agent system.
-    Requires user-supplied Gemini API Key.
+    Routes queries to the coordinator, build, and secret worker agents.
     """
     if not x_gemini_api_key:
         raise HTTPException(
             status_code=401,
-            detail="Gemini API Key missing. Please provide a valid Gemini API Key in Settings."
+            detail="Gemini API Key missing. Please provide your API Key in Settings."
         )
         
-    # Sanitize and run security gate
     sanitized_message = sanitize_and_check_prompt(request.message)
     
     try:
-        agent_reply = run_multi_agent_system(x_gemini_api_key, sanitized_message)
+        reply = run_multi_agent_system(x_gemini_api_key, sanitized_message)
         return {
             "status": "success",
-            "reply": agent_reply
+            "reply": reply
         }
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Agent Error: {str(e)}. Please check if your API key is valid."
+            detail=f"Agent Cockpit Error: {str(e)}. Please check if your API Key is valid."
         )
 
-@app.post("/api/execute-action")
-async def execute_system_action(request: ActionRequest):
+@app.post("/api/run-command")
+async def execute_command(request: CommandRequest):
     """
-    Security Gate: Execute process termination only after explicit user approval.
-    Sanitizes PID argument and enforces strict process checks.
+    Security Gate: Execute shell commands (builds/tests) ONLY after user approval.
     """
-    pid = request.pid
+    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    command = request.command
     
-    # Run the termination logic
-    result = kill_process_by_pid(pid)
+    # Run the secure execution engine
+    result = run_shell_command(command, root_path)
     
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("message"))
+        raise HTTPException(status_code=400, detail=result.get("output"))
         
     return {
         "status": "success",
-        "message": result.get("message")
+        "output": result.get("output"),
+        "returncode": result.get("returncode")
     }
 
 @app.get("/api/health")
 async def health_check():
     """
-    Simple service status check.
+    Backend service status.
     """
     return {"status": "online", "message": "VibeOps backend server is ready."}
